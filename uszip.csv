@@ -1,0 +1,6 @@
+"zip","lat","lng","city","state_id","state_name","zcta","parent_zcta","population","density","county_fips","county_name","county_weights","county_names_all","county_fips_all","imprecise","military","timezone"
+"00601","18.18027","-66.75266","Adjuntas","PR","Puerto Rico","TRUE","","16721","100.2","72001","Adjuntas","{""72001"": 98.74, ""72141"": 1.26}","Adjuntas|Utuado","72001|72141","FALSE","FALSE","America/Puerto_Rico"
+"00602","18.36075","-67.17541","Aguada","PR","Puerto Rico","TRUE","","37510","477.6","72003","Aguada","{""72003"": 100}","Aguada","72003","FALSE","FALSE","America/Puerto_Rico"
+"00603","18.45744","-67.12225","Aguadilla","PR","Puerto Rico","TRUE","","48317","543.1","72005","Aguadilla","{""72005"": 99.76, ""72099"": 0.24}","Aguadilla|Moca","72005|72099","FALSE","FALSE","America/Puerto_Rico"
+"00606","18.16585","-66.93716","Maricao","PR","Puerto Rico","TRUE","","5435","47.3","72093","Maricao","{""72093"": 82.26, ""72153"": 11.67, ""72121"": 6.06}","Maricao|Yauco|Sabana Grande","72093|72153|72121","FALSE","FALSE","America/Puerto_Rico"
+"00610","18.2911","-67.12243","Anasco","PR","Puerto Rico","TRUE","","25413","264.4","72011","Añasco","{""72011"": 96.8, ""72099"": 2.83, ""72083"": 0.37}","Añasco|Moca|Las Marías","72011|72099|72083","FALSE","FALSE","America/Puerto_Rico"
