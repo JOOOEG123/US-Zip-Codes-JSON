@@ -1,16 +1,26 @@
 import pandas as pd
 import json
 
+def normalize_zip_value(z):
+    """
+    Convert a ZIP-like value into a normalized string:
+      - NaN -> "" (empty string)
+      - numeric (e.g. 212) -> zero-pad to 5 digits ("00212")
+      - keep ZIP+4 or other existing string formats unchanged ("02115", "12345-6789")
+      - strip whitespace
+    """
+    if pd.isna(z):
+        return ""
+    s = str(z).strip()
+    # If purely numeric (no dash) and shorter than 5, zero-pad to 5
+    if s.isdigit() and len(s) < 5:
+        return s.zfill(5)
+    return s
+
 def combine_zipcode_data_optimized(csv_file_path, github_json_url, output_json_path, csv_priority=True, compress_json=False):
     """
-    Combines ZIP code data from CSV and GitHub JSON with proper field mapping
-    
-    Args:
-        csv_file_path: Path to your CSV file
-        github_json_url: URL to the JSON data on GitHub  
-        output_json_path: Path for output JSON file
-        csv_priority: If True, CSV data takes precedence in conflicts
-        compress_json: If True, outputs minified JSON without formatting
+    Combines ZIP code data from CSV and GitHub JSON with proper field mapping.
+    Ensures `zip` is always emitted as a string in the output JSON.
     """
     
     # Load JSON data from GitHub
@@ -30,8 +40,21 @@ def combine_zipcode_data_optimized(csv_file_path, github_json_url, output_json_p
     
     # Load CSV data
     print("Loading CSV data...")
-    csv_df = pd.read_csv(csv_file_path)
+    csv_df = pd.read_csv(csv_file_path, dtype=str)  # read as strings to avoid numeric truncation
     print(f"Loaded {len(csv_df)} records from CSV")
+    
+    # Normalize zip columns on both dataframes to string format before merging
+    print("Normalizing ZIP columns to string...")
+    if 'zip' in csv_df.columns:
+        csv_df['zip'] = csv_df['zip'].apply(normalize_zip_value)
+    else:
+        # if csv has a different column name for zip, you may need to adapt this
+        csv_df['zip'] = csv_df.get('zip', "").apply(normalize_zip_value) if hasattr(csv_df, 'get') else ""
+    
+    if 'zip' in json_df.columns:
+        json_df['zip'] = json_df['zip'].apply(normalize_zip_value)
+    else:
+        json_df['zip'] = json_df.get('zip', "").apply(normalize_zip_value) if hasattr(json_df, 'get') else ""
     
     # Perform outer merge to include ALL ZIP codes from both sources
     print("Merging datasets...")
@@ -41,7 +64,7 @@ def combine_zipcode_data_optimized(csv_file_path, github_json_url, output_json_p
     print(f"After merge: {len(merged_df)} total records")
     
     # Create final DataFrame with resolved columns
-    final_columns = {'zip': merged_df['zip']}
+    final_columns = {'zip': merged_df['zip'].astype(str)}  # enforce string dtype here
     
     # Define all possible columns that might need resolution
     conflict_columns = ['lat', 'lng', 'city', 'state_id', 'county_name']
@@ -93,6 +116,9 @@ def combine_zipcode_data_optimized(csv_file_path, github_json_url, output_json_p
     missing_coords = final_df[(final_df['lat'].isna()) | (final_df['lng'].isna())]
     print(f"Found {len(missing_coords)} records with missing coordinates")
     
+    # Ensure the zip column is string (defensive)
+    final_df['zip'] = final_df['zip'].astype(str)
+    
     # Save the final result with optional compression
     print(f"Saving combined data to {output_json_path}...")
     
@@ -121,7 +147,7 @@ def combine_zipcode_data_optimized(csv_file_path, github_json_url, output_json_p
     print(f"{'Missing coords':15}: {len(missing_final):>6} records")
     
     if len(missing_final) > 0:
-        print("\nZIP codes still missing coordinates:")
+        print("\nZIP codes still missing coordinates: (showing up to 10)")
         for zip_code in missing_final['zip'].head(10):
             print(f"  - {zip_code}")
         if len(missing_final) > 10:
@@ -129,7 +155,7 @@ def combine_zipcode_data_optimized(csv_file_path, github_json_url, output_json_p
     
     print("="*60)
 
-# Usage examples
+# Usage examples (unchanged)
 if __name__ == "__main__":
     CSV_FILE = "uszips.csv"
     GITHUB_JSON_URL = "https://raw.githubusercontent.com/millbj92/US-Zip-Codes-JSON/refs/heads/master/USCities.json"
