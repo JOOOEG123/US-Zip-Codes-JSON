@@ -83,15 +83,15 @@ def optimize_data_types(df: pd.DataFrame) -> pd.DataFrame:
     # Convert object columns to more efficient types
     for col in df_optimized.columns:
         if df_optimized[col].dtype == 'object':
-            # Try to convert to numeric
+            # Try to convert to numeric without using errors='ignore'
             try:
-                pd.to_numeric(df_optimized[col], errors='ignore')
+                # Attempt conversion - if it fails, it will raise an exception
+                numeric_series = pd.to_numeric(df_optimized[col])
+                df_optimized[col] = numeric_series
             except (ValueError, TypeError):
-                pass
-            
-            # Convert to category if low cardinality
-            if df_optimized[col].nunique() / len(df_optimized) < 0.5:
-                df_optimized[col] = df_optimized[col].astype('category')
+                # If conversion fails, check if we should convert to category
+                if df_optimized[col].nunique() / len(df_optimized) < 0.5:
+                    df_optimized[col] = df_optimized[col].astype('category')
     
     return df_optimized
 
@@ -101,6 +101,16 @@ def fill_missing_coordinates(final_df: pd.DataFrame) -> pd.DataFrame:
         return final_df
     
     df_filled = final_df.copy()
+    
+    # Ensure we have the required columns
+    if 'lat' not in df_filled.columns or 'lng' not in df_filled.columns:
+        logger.warning("Missing lat/lng columns, skipping coordinate filling")
+        return df_filled
+        
+    if 'city' not in df_filled.columns or 'state_id' not in df_filled.columns:
+        logger.warning("Missing city/state_id columns, skipping coordinate filling")
+        return df_filled
+    
     missing_before = ((df_filled['lat'].isna()) | (df_filled['lng'].isna())).sum()
     
     if missing_before == 0:
@@ -109,6 +119,10 @@ def fill_missing_coordinates(final_df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Filling missing coordinates for {missing_before} records...")
     
     # Strategy 1: Use city/state averages
+    # Ensure city and state_id are strings to avoid unhashable types
+    df_filled['city'] = df_filled['city'].astype(str)
+    df_filled['state_id'] = df_filled['state_id'].astype(str)
+    
     city_state_coords = df_filled.groupby(['city', 'state_id']).agg({
         'lat': 'mean',
         'lng': 'mean'
@@ -130,12 +144,13 @@ def fill_missing_coordinates(final_df: pd.DataFrame) -> pd.DataFrame:
     
     # Fill coordinates
     fill_mask = missing_data['lat_fill'].notna()
-    df_filled.loc[missing_mask, 'lat'] = df_filled.loc[missing_mask, 'lat'].fillna(
-        pd.Series(missing_data['lat_fill'].values, index=missing_data.index)
-    )
-    df_filled.loc[missing_mask, 'lng'] = df_filled.loc[missing_mask, 'lng'].fillna(
-        pd.Series(missing_data['lng_fill'].values, index=missing_data.index)
-    )
+    if fill_mask.any():
+        df_filled.loc[missing_mask, 'lat'] = df_filled.loc[missing_mask, 'lat'].fillna(
+            pd.Series(missing_data['lat_fill'].values, index=missing_data.index)
+        )
+        df_filled.loc[missing_mask, 'lng'] = df_filled.loc[missing_mask, 'lng'].fillna(
+            pd.Series(missing_data['lng_fill'].values, index=missing_data.index)
+        )
     
     missing_after = ((df_filled['lat'].isna()) | (df_filled['lng'].isna())).sum()
     logger.info(f"Filled {missing_before - missing_after} coordinate pairs")
@@ -272,11 +287,27 @@ def combine_zipcode_data_optimized(
         }
         final_df['_source'] = merged_df['_merge'].map(source_map)
         
-        # Process JSON fields in the final dataset
+        # Process JSON fields in the final dataset - ensure they're strings for JSON serialization
         json_columns = [col for col in final_df.columns if 'json' in col.lower() or 'weights' in col.lower()]
         for col in json_columns:
             if col in final_df.columns:
-                final_df[col] = final_df[col].apply(lambda x: safe_json_loads(x))
+                # Convert to string representation to avoid unhashable dict issues
+                final_df[col] = final_df[col].apply(
+                    lambda x: json.dumps(x) if isinstance(x, (dict, list)) else x
+                )
+        
+        # Convert potential dict/list columns to strings to avoid unhashable type errors
+        for col in final_df.columns:
+            # Sample a few rows to check for dict/list types
+            sample_size = min(10, len(final_df))
+            if sample_size > 0:
+                sample = final_df[col].head(sample_size)
+                has_dicts = any(isinstance(x, (dict, list)) for x in sample if pd.notna(x))
+                if has_dicts:
+                    logger.info(f"Converting {col} to string to avoid unhashable type issues")
+                    final_df[col] = final_df[col].apply(
+                        lambda x: json.dumps(x) if isinstance(x, (dict, list)) else x
+                    )
         
         # Fill missing coordinates if requested
         if fill_missing_coords and 'lat' in final_df.columns and 'lng' in final_df.columns:
@@ -303,6 +334,8 @@ def combine_zipcode_data_optimized(
         
     except Exception as e:
         logger.error(f"Error during data combination: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 def print_summary(final_df: pd.DataFrame):
